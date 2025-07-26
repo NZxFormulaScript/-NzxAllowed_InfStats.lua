@@ -1,0 +1,205 @@
+--[[
+    Auto Infinite Stat Script [Refactored by ChatGPT]
+    Original idea by Aloof / Pumpkhn
+    Game compatibility: DBZFS or similar stat-based Roblox game
+    Features:
+    - Auto slot switch
+    - Auto leveling for Namekian
+    - Safe rejoin + teleport
+    - Anti-AFK
+    - Configurable delays and toggles
+--]]
+
+--// Configurations
+local Config = {
+    SlotWaitTime = 0.19,
+    KamiWaitTime = 0.19,
+    ChatDelay = 0.5,
+    HideName = "Youtube Pumpkhn", -- "none" to disable
+    StopAfter = 0, -- 0 = infinite
+    Debug = false
+}
+
+local Accounts = {
+    ["VerifiedBuckzYT"] = {Main = 1, Namek = 2},
+    ["Aloof"] = {Main = 2, Namek = 1},
+}
+
+--// Variables
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local StarterGui = game:GetService("StarterGui")
+local plr = Players.LocalPlayer
+local char, hrp, bp, st
+
+--// Utility Functions
+local function debugPrint(msg)
+    if Config.Debug then print("[DEBUG]:", msg) end
+end
+
+local function waitForChildSafe(parent, name, timeout)
+    return parent:WaitForChild(name, timeout or 5)
+end
+
+local function notify(title, text)
+    StarterGui:SetCore("SendNotification", {Title = title, Text = text})
+end
+
+local function getName()
+    return (Config.HideName:lower() ~= "none") and Config.HideName or plr.Name
+end
+
+local function getLevel()
+    for _, v in pairs(char:GetChildren()) do
+        if v:IsA("Model") and v.Name:match("Lvl%.%s*(%d+)") then
+            return tonumber(v.Name:match("Lvl%.%s*(%d+)"))
+        end
+    end
+    return 0
+end
+
+local function getAccountSlots()
+    local acc = Accounts[plr.Name]
+    return acc and acc.Main, acc and acc.Namek
+end
+
+local function rejoin()
+    plr:Kick("Rejoining...")
+    task.wait(0.2)
+    TeleportService:Teleport(game.PlaceId, plr)
+end
+
+local function getKami()
+    for _, v in pairs(game:GetDescendants()) do
+        if v.Name == "KAMI" and (v.Parent.Name == "Hidden" or v.Parent.Name == "FriendlyNPCs") then
+            return v
+        end
+    end
+    return nil
+end
+
+local function doAntiAfk()
+    plr.Idled:Connect(function()
+        local vu = game:GetService("VirtualUser")
+        vu:CaptureController()
+        vu:ClickButton2(Vector2.new())
+    end)
+end
+
+--// Initialization
+repeat task.wait() until game:IsLoaded() and plr.Character
+
+local function setVars()
+    char = plr.Character
+    hrp = waitForChildSafe(char, "HumanoidRootPart")
+    bp = waitForChildSafe(plr, "Backpack")
+    st = bp:FindFirstChild("ServerTraits")
+end
+
+plr.CharacterAdded:Connect(function()
+    setVars()
+    task.wait(1)
+    doInfiniteStat()
+end)
+
+setVars()
+doAntiAfk()
+
+--// Main Functions
+function fireChatSequence(sequence)
+    for _, msg in ipairs(sequence) do
+        if st then
+            st.ChatAdvance:FireServer({tostring(msg)})
+            task.wait(Config.ChatDelay)
+        end
+    end
+end
+
+function levelUpNamekian()
+    local npcs = game.Workspace.FriendlyNPCs
+    local steps = {
+        {"Bulma", {"k", "Yes", "k"}},
+        {"SpaceShip", {"No", "k"}},
+        {"Trunks [Future]", {"k", "Yes", "k"}},
+        {"TimeMachine", {"No", "k"}},
+        {"Elder Kai", {"k", "Yes", "k", "k"}},
+        {"Korin", {"k", "k", "DRINK", "k"}},
+    }
+
+    for _, step in ipairs(steps) do
+        local npc = npcs:FindFirstChild(step[1])
+        if npc and npc:FindFirstChild("Chat") then
+            st.ChatStart:FireServer(npc.Chat)
+            task.wait(0.4)
+            fireChatSequence(step[2])
+        end
+    end
+end
+
+function switchSlot(slotNumber)
+    local hud = plr:FindFirstChild("PlayerGui"):FindFirstChild("HUD")
+    if st and hud then
+        st.ChatStart:FireServer(game.Workspace.FriendlyNPCs["Character Slot Changer"])
+        task.wait(0.5)
+        fireChatSequence({"Yes", "k"})
+        task.wait(0.3)
+        st.ChatAdvance:FireServer({"Slot" .. slotNumber})
+        task.wait(Config.SlotWaitTime)
+    end
+end
+
+function doKamiBoost()
+    local kami = getKami()
+    if not kami then return false end
+    if st then
+        st.ChatStart:FireServer(kami.Chat)
+        task.wait(0.5)
+        fireChatSequence({"k"})
+        return true
+    end
+    return false
+end
+
+function doInfiniteStat()
+    local MainSlot, NamekSlot = getAccountSlots()
+    if not MainSlot or not NamekSlot then
+        notify("Inf Stat", "Account not in slot table!")
+        return
+    end
+
+    if getLevel() < 50 then
+        debugPrint("Level too low. Starting Namekian questline.")
+        levelUpNamekian()
+        task.wait(3)
+    end
+
+    if getLevel() >= 50 then
+        debugPrint("Level 50+ detected. Switching slot...")
+        switchSlot(MainSlot)
+        task.wait(Config.KamiWaitTime)
+
+        if doKamiBoost() then
+            notify("Inf Stat", "Booster activated.")
+        else
+            notify("Inf Stat", "Kami not found. Resetting...")
+            resetChar()
+        end
+    end
+end
+
+function resetChar()
+    debugPrint("Resetting character...")
+    if game.PlaceId == 552500546 then
+        local scripter = bp:WaitForChild("Scripter")
+        scripter.RemoteEvent:FireServer(scripter.Setup.Frame.Side.Race, "up")
+        task.wait(1)
+        scripter.RemoteEvent:FireServer("woah")
+        task.wait(1)
+        game:Shutdown()
+    else
+        st.ChatStart:FireServer(game.Workspace.FriendlyNPCs["Start New Game [Redo Character]"])
+        task.wait(0.4)
+        fireChatSequence({"Yes", "k", "Yes"})
+        TeleportService:Teleport(552500546)
+    end
+end
