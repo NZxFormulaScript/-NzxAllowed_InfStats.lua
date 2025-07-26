@@ -1,0 +1,131 @@
+-- Infinite Stat Boost Script for Roblox (Custom)
+-- Author: NzxAllowed | Main Account: Songokuxui
+-- Repo-ready version for GitHub (inf-stat-boost)
+
+-- SETTINGS
+local Settings = {
+    SlotWaitTime = 0.18,     -- Delay between slot switch inputs
+    KamiWaitTime = 0.18,     -- Delay after switching before talking to Kami
+    HideName = "NzxAllowed", -- In-game name override
+    StopAfter = 0            -- Stop after X stat points; 0 = never stop
+}
+
+-- ACCOUNT SLOT CONFIG
+local Accounts = {
+    ["songokuxui"] = {
+        Main = 1,
+        Namek = 2
+    },
+}
+
+local plr, char, hrp, bp, st
+local function getVars()
+    plr = game.Players.LocalPlayer
+    char = plr.Character or plr.CharacterAdded:Wait()
+    hrp = char:WaitForChild("HumanoidRootPart")
+    bp = plr:WaitForChild("Backpack")
+    st = bp:FindFirstChild("ServerTraits")
+end
+getVars()
+
+-- NOTIFICATION
+local function notif(title, msg)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = title,
+            Text = msg,
+        })
+    end)
+end
+
+-- GET SLOTS FROM ACCOUNT TABLE
+local function getAcc()
+    local acc = Accounts[plr.Name]
+    if acc then return acc.Main, acc.Namek end
+    notif("Inf Stat", "Account not configured")
+    return nil
+end
+
+-- SLOT STATE
+local function getSlot()
+    local race = char:FindFirstChild("Race")
+    if race and race.Value == "Namekian" then
+        return "Namek"
+    end
+    return "Main"
+end
+
+-- CHECK BOOST
+local function hasWhiteBoost()
+    return hrp and hrp:FindFirstChild("Booster") ~= nil
+end
+
+-- REJOIN IF ERROR
+local function reJoin()
+    plr:Kick("Rejoining to retry Kami boost")
+    task.wait(1)
+    game:GetService("TeleportService"):Teleport(game.PlaceId)
+end
+
+-- GET KAMI
+local function getKami()
+    for _, obj in pairs(game:GetDescendants()) do
+        if obj.Name == "KAMI" and (obj.Parent.Name == "FriendlyNPCs" or obj.Parent.Name == "Hidden") then
+            return obj
+        end
+    end
+end
+
+-- DO KAMI BOOST
+local function handleKamiBoost()
+    local kami = getKami()
+    if not kami then notif("Boost", "Kami not found"); return end
+
+    local textLabel = plr.PlayerGui:WaitForChild("HUD"):WaitForChild("Bottom"):WaitForChild("ChatGui"):WaitForChild("TextLabel")
+
+    st.ChatStart:FireServer(kami.Chat)
+    task.wait(0.4)
+    st.ChatAdvance:FireServer({"k"})
+
+    repeat
+        task.wait(0.4)
+    until textLabel.Text == "Alright let's do it" or textLabel.Text == "Mr Popo is a nice guy"
+
+    if textLabel.Text == "Alright let's do it" then
+        task.wait(1.2)
+        if hasWhiteBoost() then
+            notif("Inf Stat", "White boost applied ✅")
+            task.wait(2)
+            game:GetService("TeleportService"):Teleport(game.PlaceId)
+        else
+            notif("Inf Stat", "Boost failed, retrying")
+            reJoin()
+        end
+    elseif textLabel.Text == "Mr Popo is a nice guy" then
+        notif("Inf Stat", "Slot needs reset")
+    end
+end
+
+-- INIT
+local function main()
+    notif("Inf Stat", "Starting script...")
+    local mainSlot, namekSlot = getAcc()
+    if not mainSlot then return end
+
+    if getSlot() == "Namek" then
+        task.wait(1)
+        handleKamiBoost()
+    else
+        notif("Inf Stat", "Not Namekian slot, switching...")
+    end
+end
+
+-- AUTO EXEC
+main()
+
+-- RE-RUN ON CHARACTER ADDED
+plr.CharacterAdded:Connect(function()
+    getVars()
+    task.wait(2)
+    main()
+end)
